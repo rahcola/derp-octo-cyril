@@ -135,7 +135,8 @@
   
   p/AParser
   (label [_ message]
-    (Parser. (fn [a] (label (p a) (e/->Expected message)))))
+    (Parser.
+     (fn [a] (label (p a) (e/->Expected message)))))
   (parse [this input]
     (parse (this (s/->State input (s/->Position 0 0) {}))))
 
@@ -160,7 +161,7 @@
     (ap/<*> (f/fmap (partial partial cons) u) (al/many u)))
 
   m/Monad
-  (bind [_ f]
+  (bind [p f]
     (Parser.
      (fn [a]
        (bind (p a) f)))))

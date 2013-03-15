@@ -1,4 +1,5 @@
 (ns derp-octo-cyril.core
+  (:gen-class)
   (:require [derp-octo-cyril.parser :as p])
   (:require [derp-octo-cyril.character :as c])
   (:require [derp-octo-cyril.sequence :as seq])
@@ -33,7 +34,8 @@
       (str expr' "+" expr' "*(" expr' "-" expr' ")"))))
 
 (defn -main [& args]
-  (let [expr-str (gen-expr (read-string (first args)))
+  (let [expr-level (read-string (first args))
+        expr-str (gen-expr expr-level)
         times' (read-string (second args))]
     (loop [acc []
            times times']
