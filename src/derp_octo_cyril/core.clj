@@ -30,21 +30,19 @@
 (def empty (fn [state] (empty-error (e/->unknown (:position state)))))
 
 (defn satisfy [p]
-  (fn [{:keys [input position] :as state}]
+  (fn [{:keys [^CharBuffer input position] :as state}]
     (if (.hasRemaining input)
-      (let [x (.get (.mark input))]
+      (let [x (do (.mark input)
+                  (.get input))]
         (if (p x)
-          (let [new-position (s/update position x)]
-            (consumed-ok x
-                         (-> state
+          (let [new-position (s/update position x)
+                new-state (-> state
                              (assoc :input input)
-                             (assoc :position new-position))
-                         (e/->unknown new-position)))
+                             (assoc :position new-position))]
+            (consumed-ok x new-state (e/->unknown new-position)))
           (do (.reset input)
               (empty-error (e/->sys-unexpected (str x) position)))))
       (empty-error (e/->sys-unexpected "" position)))))
-
-(defn char [c] (satisfy (fn [x] (.equals c x))))
 
 (defn ^{:private true}
   sequence-c-ok
@@ -124,3 +122,21 @@
 (defn some [p]
   (sequence (fmap (fn [x] (fn [xs] (cons x xs))) p)
             (many p)))
+
+(defn run [p string]
+  (let [{:keys [tag value error]} (p (s/->state (CharBuffer/wrap string)))]
+    (case tag
+      :consumed-ok value
+      :empty-ok value
+      :consumed-error error
+      :empty-error error)))
+
+(defn char [^Character c] (satisfy (fn [c'] (.equals c c'))))
+
+(def letter (satisfy (fn [c] (Character/isLetter c))))
+
+(def digit (satisfy (fn [c] (Character/isDigit c))))
+
+(def whitespace (satisfy (fn [c] (Character/isWhitespace c))))
+
+(def word (some letter))
