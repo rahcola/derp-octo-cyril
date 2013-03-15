@@ -1,48 +1,37 @@
-(ns derp-octo-cyril.core
-  (:gen-class)
-  (:require [derp-octo-cyril.parser :as p])
-  (:require [derp-octo-cyril.character :as c])
-  (:require [derp-octo-cyril.sequence :as seq])
-  (:require [derp-octo-cyril.applicative :as ap])
-  (:require [derp-octo-cyril.alternative :as al])
-  (:require [derp-octo-cyril.monad :as m])
-  (:require [derp-octo-cyril.error :as e])
-  (:require [derp-octo-cyril.state :as s])
-  (:require [derp-octo-cyril.bytestring :as b]))
+(ns derp-octo-cyril.core)
 
-(declare expr term fact)
+(defn consumed-ok [value state error])
+(defn empty-ok [value state error])
+(defn consumed-error [state error])
+(defn empty-error [state error])
 
-(def expr
-  (delay
-   (p/chainl1 term (al/combine (ap/<$ + (c/character \+))
-                               (ap/<$ - (c/character \-))))))
+(defn merge-error [error error'])
 
-(def term
-  (delay
-   (p/chainl1 fact (al/combine (ap/<$ * (c/character \*))
-                               (ap/<$ / (c/character \/))))))
+(defn ^{:private true}
+  sequence-c-ok
+  [{f :value error :error}
+   {tag :tag x :value state :state error' :error :as result}]
+  (case tag
+    :consumed-ok (consumed-ok (f x) state error')
+    :empty-ok (consumed-ok (f x) state (merge-error error error'))
+    :consumed-error result
+    :empty-error (consumed-error state (merge-error error error'))))
 
-(def fact
-  (delay
-   (al/combine c/decimal
-               (p/between (c/character \() expr (c/character \))))))
+(defn ^{:private true}
+  sequence-e-ok
+  [{f :value error :error}
+   {tag :tag x :value state :state error' :error :as result}]
+  (case tag
+    :consumed-ok (consumed-ok (f x) state error')
+    :empty-ok (empty-ok (f x) state (merge-error error error'))
+    :consumed-error result
+    :empty-error (empty-error state (merge-error error error'))))
 
-(defn gen-expr [n]
-  (if (zero? n)
-    "1"
-    (let [expr' (gen-expr (dec n))]
-      (str expr' "+" expr' "*(" expr' "-" expr' ")"))))
-
-(defn -main [& args]
-  (let [expr-level (read-string (first args))
-        expr-str (gen-expr expr-level)
-        times' (read-string (second args))]
-    (loop [acc []
-           times times']
-      (if (zero? times)
-        (println (int (/ (/ (apply + acc) times') 1000000)))
-        (let [input (b/->ByteString expr-str)
-              start (System/nanoTime)]
-          (p/parse expr input)
-          (recur (conj acc (- (System/nanoTime) start))
-                 (dec times)))))))
+(defn sequence [p q]
+  (fn [state]
+    (let [{:keys [tag state] :as result} (p state)]
+      (case tag
+        :consumed-ok (sequence-c-ok result (q state))
+        :empty-ok (sequence-e-ok result (q state))
+        :consumed-error result
+        :empty-error result))))
