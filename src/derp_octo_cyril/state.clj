@@ -3,7 +3,7 @@
 (defprotocol Position
   (update [self char]))
 
-(defrecord APosition [name line column]
+(deftype APosition [name line column]
   Position
   (update [_ x]
     (if (= x \newline)

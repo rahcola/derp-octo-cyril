@@ -1,5 +1,6 @@
 (ns derp-octo-cyril.core
   (:refer-clojure :rename {empty core-empty
+                           some core-some
                            char core-char
                            sequence core-sequence})
   (:require [derp-octo-cyril.state :as s])
@@ -89,5 +90,33 @@
                          :consumed-error result
                          :empty-error (merge-error result error)))))))
 
-(defn -main [& args]
-  (println ((choose (char \x) (char \y)) (s/->state [\x]))))
+(defn many [p]
+  (let [empty-many (RuntimeException. "many applied to an empty parser")
+        walk (fn [acc state {state' :state :keys [tag value error]}]
+               (case tag
+                 :consumed-ok (recur (conj acc value)
+                                     state'
+                                     (p state'))
+                 :empty-ok (throw empty-many)
+                 :consumed-error (consumed-error error)
+                 :empty-error (consumed-ok acc state error)))]
+    (fn [state]
+      (let [{:keys [tag state error] :as result} (p state)]
+        (case tag
+          :consumed-ok (walk [] state result)
+          :empty-ok (throw empty-many)
+          :consumed-error (walk [] state result)
+          :empty-error (empty-ok [] state error))))))
+
+(defn fmap [f p]
+  (fn [state]
+    (let [{:keys [tag] :as result} (p state)]
+      (case tag
+        :consumed-ok (update-in result [:value] f)
+        :empty-ok (update-in result [:value] f)
+        :consumed-error result
+        :empty-error result))))
+
+(defn some [p]
+  (sequence (fmap (fn [x] (fn [xs] (cons x xs))) p)
+            (many p)))

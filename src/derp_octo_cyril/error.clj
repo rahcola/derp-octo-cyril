@@ -34,7 +34,7 @@
   (toString [_]
     (if (empty? messages)
       "unknown parse error"
-      (str position ":" (apply str (interpose \newline (map str messages)))))))
+      (str position ": " (apply str (interpose \newline (map str messages)))))))
 
 (defmethod clojure.core/print-method AParseError
   [error writer]
