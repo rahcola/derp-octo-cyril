@@ -4,7 +4,8 @@
                            char core-char
                            sequence core-sequence})
   (:require [derp-octo-cyril.state :as s])
-  (:require [derp-octo-cyril.error :as e]))
+  (:require [derp-octo-cyril.error :as e])
+  (:import java.nio.CharBuffer))
 
 (defn consumed-ok [value state error]
   {:tag :consumed-ok
@@ -28,19 +29,22 @@
 
 (def empty (fn [state] (empty-error (e/->unknown (:position state)))))
 
-(defn char [c]
+(defn satisfy [p]
   (fn [{:keys [input position] :as state}]
-    (if (empty? input)
-      (empty-error (e/->sys-unexpected "" position))
-      (let [[x & xs] input]
-        (if (= c x)
+    (if (.hasRemaining input)
+      (let [x (.get (.mark input))]
+        (if (p x)
           (let [new-position (s/update position x)]
             (consumed-ok x
                          (-> state
-                             (assoc :input xs)
+                             (assoc :input input)
                              (assoc :position new-position))
                          (e/->unknown new-position)))
-          (empty-error (e/->sys-unexpected (str c) position)))))))
+          (do (.reset input)
+              (empty-error (e/->sys-unexpected (str x) position)))))
+      (empty-error (e/->sys-unexpected "" position)))))
+
+(defn char [c] (satisfy (fn [x] (.equals c x))))
 
 (defn ^{:private true}
   sequence-c-ok
@@ -78,7 +82,7 @@
 
 (defn choose [p q]
   (fn [state]
-    (let [{:keys [tag state error] :as result} (p state)]
+    (let [{:keys [tag error] :as result} (p state)]
       (case tag
         :consumed-ok result
         :empty-ok result
