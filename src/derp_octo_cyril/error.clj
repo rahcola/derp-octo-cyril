@@ -1,34 +1,53 @@
-(ns derp-octo-cyril.error)
+(ns derp-octo-cyril.error
+  (:refer-clojure :rename {concat core-concat}))
 
-(defrecord Expected [message])
+(defrecord Expected [message]
+  Object
+  (toString [_]
+    (str "expected " message)))
 
-(defrecord Unexpected [message])
+(defrecord Unexpected [message]
+  Object
+  (toString [_]
+    (str "unexpected " message)))
 
-(defrecord SysUnexpected [message])
+(defrecord SysUnexpected [message]
+  Object
+  (toString [_]
+    (str "unexpected " message)))
 
-(defprotocol AError
-  (merge-error [this error])
-  (unknown? [this])
-  (add-message [this message]))
+(defprotocol ParseError
+  (concat [self error])
+  (unknown? [self])
+  (add-message [self message]))
 
-(defrecord ParseError [messages position]
-  AError
-  (merge-error [this {:keys [messages']}]
-    (->ParseError (concat messages messages') position))
-  (unknown? [this]
+(defrecord AParseError [messages position]
+  ParseError
+  (concat [_ {:keys [messages']}]
+    (->AParseError (core-concat messages messages') position))
+  (unknown? [_]
     (empty? messages))
-  (add-message [this message]
-    (->ParseError (cons message (remove (partial = message) messages))
-                  position)))
+  (add-message [_ message]
+    (->AParseError (cons message (remove (partial = message) messages))
+                   position))
+  Object
+  (toString [_]
+    (if (empty? messages)
+      "unknown parse error"
+      (str position ":" (apply str (interpose \newline (map str messages)))))))
+
+(defmethod clojure.core/print-method AParseError
+  [error writer]
+  (.write writer (str error)))
 
 (defn ->unknown [position]
-  (->ParseError [] position))
+  (->AParseError [] position))
 
 (defn ->expected [message position]
-  (->ParseError [(->Expected message)] position))
+  (->AParseError [(->Expected message)] position))
 
 (defn ->unexpected [message position]
-  (->ParseError [(->Unexpected message)] position))
+  (->AParseError [(->Unexpected message)] position))
 
 (defn ->sys-unexpected [message position]
-  (->ParseError [(->SysUnexpected message)] position))
+  (->AParseError [(->SysUnexpected message)] position))

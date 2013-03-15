@@ -4,4 +4,5 @@
   :license {:name "ISC license"
             :url "http://www.isc.org/software/license"}
   :dependencies [[org.clojure/clojure "1.5.0"]]
-  :profiles {:dev {:dependencies [[midje "1.5.0"]]}})
+  :profiles {:dev {:dependencies [[midje "1.5.0"]]}}
+  :main derp-octo-cyril.core)
