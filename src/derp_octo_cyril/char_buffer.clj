@@ -47,8 +47,28 @@
               (do (.reset input)
                   (empty-error (e/sys-unexpected s' position))))))))))
 
+(def any-char
+  (p/label (satisfy (constantly true)) "any character"))
+
 (defn char [c]
   (p/label (satisfy (fn [c'] (.equals c c'))) (str c)))
 
+(defn not-char [c]
+  (p/label (satisfy (fn [c'] (not (.equals c c')))) (str "not " c)))
+
+(def alphanumeric
+  (p/label (satisfy (fn [c] (or (Character/isLetter c)
+                               (Character/isDigit c))))
+           "alphanumeric"))
+
+(def digit
+  (p/label (satisfy (fn [c] (Character/isDigit c))) "digit"))
+
 (def letter
   (p/label (satisfy (fn [c] (Character/isLetter c))) "letter"))
+
+(defn one-of [cs]
+  (p/label (satisfy (fn [c] (contains? cs c))) (str "one of " cs)))
+
+(defn none-of [cs]
+  (p/label (satisfy (fn [c] (not (contains? cs c)))) (str "none of " cs)))

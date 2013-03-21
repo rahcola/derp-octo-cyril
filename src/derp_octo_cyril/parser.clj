@@ -112,6 +112,9 @@
 (defn some-separated [p separator]
   (lift cons p (many (lift (fn [_ x] x) separator p))))
 
+(defn optional [p]
+  (choose p (pure nil)))
+
 (defn label [p message]
   (reify Parser
     (run [_ state consumed-ok empty-ok consumed-error empty-error]
