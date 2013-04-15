@@ -1,58 +1,40 @@
 (ns derp-octo-cyril.error
-  (:refer-clojure :rename {concat core-concat}))
+  (:refer-clojure :rename {merge core-merge}))
 
-(defrecord Expected [message]
+(defrecord Unexpected [message position]
   Object
   (toString [_]
-    (str "expected " message)))
-
-(defrecord Unexpected [message]
-  Object
-  (toString [_]
-    (str "unexpected " message)))
-
-(defrecord SysUnexpected [message]
-  Object
-  (toString [_]
-    (str "unexpected " message)))
+    (str message " at " position)))
 
 (defprotocol ParseError
-  (concat [self error])
-  (add-expect [self message]))
+  (merge [error error'])
+  (set-expected [error message])
+  (remove-expected [error]))
 
-(defrecord AParseError [messages position]
+(defrecord AParseError [expected unexpected]
   ParseError
-  (concat [error {:keys [messages' position'] :as error'}]
-    (cond (empty? messages) error'
-          (empty? messages') error
-          :else
-          (case (compare position position')
-            0 (AParseError. (core-concat messages messages') position)
-            -1 error'
-            1 error)))
-  (add-expect [self message]
-    (if (empty? messages)
-      self
-      (AParseError. (cons (->Expected message)
-                          (remove (partial = message) messages))
-                    position)))
+  (merge [_ {expected' :expected unexpected' :unexpected}]
+    (AParseError. (concat expected expected')
+                  (concat unexpected unexpected')))
+  (set-expected [self message]
+    (AParseError. [message] unexpected))
+  (remove-expected [self]
+    (AParseError. [] unexpected))
   Object
   (toString [_]
-    (str position ":"
-         (apply str (interpose \newline (map str messages))))))
+    (str "unexpected " (apply str (interpose ", " unexpected))
+         \newline
+         "expected " (apply str (interpose ", " expected)))))
 
-(defmethod clojure.core/print-method AParseError
+(defmethod print-method AParseError
   [error writer]
   (.write writer (str error)))
 
 (defn unknown [position]
-  (->AParseError [] position))
+  (->AParseError [] [(->Unexpected "" position)]))
 
-(defn expected [message position]
-  (->AParseError [(->Expected message)] position))
+(defn expected [message]
+  (->AParseError [message] []))
 
 (defn unexpected [message position]
-  (->AParseError [(->Unexpected message)] position))
-
-(defn sys-unexpected [message position]
-  (->AParseError [(->SysUnexpected message)] position))
+  (->AParseError [] [(->Unexpected message position)]))
