@@ -65,6 +65,9 @@
 (def letter
   (p/label (satisfy (fn [c] (Character/isLetter c))) "letter"))
 
+(def whitespace
+  (p/label (satisfy (fn [c] (Character/isWhitespace c))) "whitespace"))
+
 (def space
   (p/label (satisfy (fn [c] (= c \space))) "space"))
 

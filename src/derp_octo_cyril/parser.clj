@@ -27,7 +27,7 @@
        (run [_ state consumed-ok empty-ok consumed-error empty-error]
          (let [after-ok
                (fn [after-empty-ok after-empty-error]
-                 (fn [f state error]
+                 (fn [f state]
                    (run q state
                         ;; consumed-ok
                         (fn [x state']
@@ -38,8 +38,7 @@
                         ;; consumed-error
                         consumed-error
                         ;; empty-error
-                        (fn [error']
-                          (after-empty-error (e/merge error error'))))))]
+                        after-empty-error)))]
            (run p state
                 (after-ok consumed-ok consumed-error)
                 (after-ok empty-ok empty-error)
@@ -54,7 +53,7 @@
     (run [_ state consumed-ok empty-ok consumed-error empty-error]
       (let [after-ok
             (fn [after-empty-ok after-empty-error]
-              (fn [x state error]
+              (fn [x state]
                 (run (f x) state
                      ;; consumed-ok
                      (fn [x' state']
@@ -65,8 +64,7 @@
                      ;; consumed-error
                      consumed-error
                      ;; empty-error
-                     (fn [error']
-                       (after-empty-error (e/merge error error'))))))]
+                     after-empty-error)))]
         (run p state
              (after-ok consumed-ok consumed-error)
              (after-ok empty-ok empty-error)
@@ -164,3 +162,8 @@
            consumed-error
            (fn [error]
              (empty-error (e/remove-expected error)))))))
+
+(def source-position
+  (reify Parser
+    (run [_ state consumed-ok empty-ok consumed-error empty-error]
+      (empty-ok (:position state) state))))
