@@ -1,34 +1,40 @@
-(ns derp-octo-cyril.error)
+(ns derp-octo-cyril.error
+  (:refer-clojure :rename {merge core-merge}))
 
-(defrecord Expected [message])
+(defrecord Unexpected [message position]
+  Object
+  (toString [_]
+    (str message " at " position)))
 
-(defrecord Unexpected [message])
+(defprotocol ParseError
+  (merge [error error'])
+  (set-expected [error message])
+  (remove-expected [error]))
 
-(defrecord SysUnexpected [message])
+(defrecord AParseError [expected unexpected]
+  ParseError
+  (merge [_ {expected' :expected unexpected' :unexpected}]
+    (AParseError. (concat expected expected')
+                  (concat unexpected unexpected')))
+  (set-expected [self message]
+    (AParseError. [message] unexpected))
+  (remove-expected [self]
+    (AParseError. [] unexpected))
+  Object
+  (toString [_]
+    (str "unexpected " (apply str (interpose ", " unexpected))
+         \newline
+         "expected " (apply str (interpose ", " expected)))))
 
-(defprotocol AError
-  (merge-error [this error])
-  (unknown? [this])
-  (add-message [this message]))
+(defmethod print-method AParseError
+  [error writer]
+  (.write writer (str error)))
 
-(defrecord ParseError [messages position]
-  AError
-  (merge-error [this {:keys [messages']}]
-    (->ParseError (concat messages messages') position))
-  (unknown? [this]
-    (empty? messages))
-  (add-message [this message]
-    (->ParseError (cons message (remove (partial = message) messages))
-                  position)))
+(defn unknown [position]
+  (->AParseError [] [(->Unexpected "" position)]))
 
-(defn ->unknown [position]
-  (->ParseError [] position))
+(defn expected [message]
+  (->AParseError [message] []))
 
-(defn ->expected [message position]
-  (->ParseError [(->Expected message)] position))
-
-(defn ->unexpected [message position]
-  (->ParseError [(->Unexpected message)] position))
-
-(defn ->sys-unexpected [message position]
-  (->ParseError [(->SysUnexpected message)] position))
+(defn unexpected [message position]
+  (->AParseError [] [(->Unexpected message position)]))

@@ -1,51 +1,184 @@
 (ns derp-octo-cyril.parser
-  (:require [clojure.algo.generic.functor :as f])
-  (:require [derp-octo-cyril.applicative :as ap])
-  (:require [derp-octo-cyril.alternative :as al])
-  (:require [derp-octo-cyril.monad :as m]))
+  (:refer-clojure :rename {empty core-empty
+                           some core-some
+                           sequence core-sequence})
+  (:require [derp-octo-cyril.state :as s])
+  (:require [derp-octo-cyril.error :as e]))
 
-(defprotocol AParser
-  (label [this message])
-  (parse [this input]))
+(defprotocol Parser
+  (run [p state consumed-ok empty-ok consumed-error empty-error]))
+
+(defprotocol ParserInput
+  (parse [input parser]))
 
 (extend-type clojure.lang.Delay
-  AParser
-  (label [p message]
-    (label (force p) message))
-  (parse [p input]
-    (parse (force p) input))
-  
-  ap/Applicative
-  (pure [a x]
-    (ap/pure (force a) x))
-  (<*> [u v]
-    (ap/<*> (force u) (force v)))
-  
-  al/Alternative
-  (empty [a]
-    (al/empty (force a)))
-  (combine [u v]
-    (al/combine (force u) (force v)))
-  (many [u]
-    (al/many (force u)))
-  (some [u]
-    (al/some (force u)))
-  
-  m/Monad
-  (bind [u f]
-    (m/bind (force u) f)))
+  Parser
+  (run [d state consumed-ok empty-ok consumed-error empty-error]
+    (run (force d) state consumed-ok empty-ok consumed-error empty-error)))
 
-(defmethod f/fmap clojure.lang.Delay [f p]
-  (f/fmap f (force p)))
+(defn pure [x]
+  (reify Parser
+    (run [_ state consumed-ok empty-ok consumed-error empty-error]
+      (empty-ok x state))))
 
-(defn between [pre p post]
-  (ap/<* (ap/*> pre p) post))
+(defn sequence
+  ([p q]
+     (reify Parser
+       (run [_ state consumed-ok empty-ok consumed-error empty-error]
+         (let [after-ok
+               (fn [after-empty-ok after-empty-error]
+                 (fn [f state]
+                   (run q state
+                        ;; consumed-ok
+                        (fn [x state']
+                          (consumed-ok (f x) state'))
+                        ;; empty-ok
+                        (fn [x state']
+                          (after-empty-ok (f x) state'))
+                        ;; consumed-error
+                        consumed-error
+                        ;; empty-error
+                        after-empty-error)))]
+           (run p state
+                (after-ok consumed-ok consumed-error)
+                (after-ok empty-ok empty-error)
+                consumed-error
+                empty-error)))))
+  ([p q & rest]
+     (reduce sequence (sequence p q) rest)))
 
-(defn chainl1 [p op]
-  (let [rest
-        (fn rest [x]
-          (al/combine (m/bind op (fn [f]
-                                   (m/bind p (fn [y]
-                                               (rest (f x y))))))
-                      (ap/pure p x)))]
-    (m/bind p rest)))
+(defn bind
+  [p f]
+  (reify Parser
+    (run [_ state consumed-ok empty-ok consumed-error empty-error]
+      (let [after-ok
+            (fn [after-empty-ok after-empty-error]
+              (fn [x state]
+                (run (f x) state
+                     ;; consumed-ok
+                     (fn [x' state']
+                       (consumed-ok x' state'))
+                     ;; empty-ok
+                     (fn [x' state']
+                       (after-empty-ok x' state'))
+                     ;; consumed-error
+                     consumed-error
+                     ;; empty-error
+                     after-empty-error)))]
+        (run p state
+             (after-ok consumed-ok consumed-error)
+             (after-ok empty-ok empty-error)
+             consumed-error
+             empty-error)))))
+
+(defn try [p]
+  (reify Parser
+    (run [_ state consumed-ok empty-ok consumed-error empty-error]
+      (run p state
+           consumed-ok
+           empty-ok
+           empty-error
+           empty-error))))
+
+(defn ^{:private true}
+  curry [n f]
+  (if (< n 2)
+    f
+    (fn [a]
+      (curry (dec n) (partial f a)))))
+
+(defn lift
+  [f a & args]
+  (let [n (inc (count args))]
+    (apply sequence (pure (curry n f)) a args)))
+
+(def empty
+  (reify Parser
+    (run [_ state consumed-ok empty-ok consumed-error empty-error]
+      (empty-error (e/unknown (:position state))))))
+
+(defn choose
+  ([p q]
+     (reify Parser
+       (run [_ state consumed-ok empty-ok consumed-error empty-error]
+         (run p state
+              consumed-ok
+              empty-ok
+              consumed-error
+              (fn [error]
+                (run q state
+                     consumed-ok
+                     (fn [value state']
+                       (empty-ok value state'))
+                     consumed-error
+                     (fn [error']
+                       (empty-error (e/merge error error')))))))))
+  ([p q & rest]
+     (reduce choose (choose p q) rest)))
+
+(defn many [p]
+  (reify Parser
+    (run [_ state consumed-ok empty-ok consumed-error empty-error]
+      (let [empty-many-error (RuntimeException. "many applied to an empty parser")
+            walk (fn walk [acc]
+                   (fn [value state]
+                     (run p state
+                          (walk (conj acc value))
+                          (fn [_ _] (throw empty-many-error))
+                          consumed-error
+                          (fn [error]
+                            (consumed-ok (conj acc value) state)))))]
+        (run p state
+             (walk [])
+             (fn [_ _] (throw empty-many-error))
+             consumed-error
+             (fn [error] (empty-ok [] state)))))))
+
+(defn some [p]
+  (lift cons p (many p)))
+
+(defn some-separated [p separator]
+  (lift cons p (many (lift (fn [_ x] x) separator p))))
+
+(defn optional [p]
+  (choose p (pure nil)))
+
+(defn not-followed-by [p]
+  (try (choose (bind (try p) (fn [_] empty))
+               (pure nil))))
+
+(defn look-ahead [p]
+  (reify Parser
+    (run [_ state consumed-ok empty-ok consumed-error empty-error]
+      (run p state
+           (fn [value _]
+             (consumed-ok value state))
+           (fn [value _]
+             (empty-ok value state))
+           consumed-error
+           empty-error))))
+
+(defn label [p message]
+  (reify Parser
+    (run [_ state consumed-ok empty-ok consumed-error empty-error]
+      (run p state
+           consumed-ok
+           empty-ok
+           consumed-error
+           (fn [error]
+             (empty-error (e/set-expected error message)))))))
+
+(defn no-label [p]
+  (reify Parser
+    (run [_ state consumed-ok empty-ok consumed-error empty-error]
+      (run p state
+           consumed-ok
+           empty-ok
+           consumed-error
+           (fn [error]
+             (empty-error (e/remove-expected error)))))))
+
+(def source-position
+  (reify Parser
+    (run [_ state consumed-ok empty-ok consumed-error empty-error]
+      (empty-ok (:position state) state))))
