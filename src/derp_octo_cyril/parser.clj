@@ -143,6 +143,21 @@
 (defn optional [p]
   (choose p (pure nil)))
 
+(defn not-followed-by [p]
+  (try (choose (bind (try p) (fn [_] empty))
+               (pure nil))))
+
+(defn look-ahead [p]
+  (reify Parser
+    (run [_ state consumed-ok empty-ok consumed-error empty-error]
+      (run p state
+           (fn [value _]
+             (consumed-ok value state))
+           (fn [value _]
+             (empty-ok value state))
+           consumed-error
+           empty-error))))
+
 (defn label [p message]
   (reify Parser
     (run [_ state consumed-ok empty-ok consumed-error empty-error]
