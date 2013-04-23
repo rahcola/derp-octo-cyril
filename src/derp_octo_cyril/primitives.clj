@@ -11,15 +11,15 @@
           {:keys [input position] :as state}
           consumed-ok empty-ok consumed-error empty-error]
       (if (empty? input)
-        (empty-error (e/unexpected "end of input" position))
+        #(empty-error (e/unexpected "end of input" position))
         (let [x (first input)]
           (if (pred x)
             (let [new-position (s/update-position x position)
                   new-state (-> state
                                 (assoc :position new-position)
                                 (assoc :input (rest input)))]
-              (consumed-ok x new-state))
-            (empty-error (e/unexpected (str "'" x "'") position))))))))
+              #(consumed-ok x new-state))
+            #(empty-error (e/unexpected (str "'" x "'") position))))))))
 
 (defn string [s]
   (let [n (count s)]
@@ -28,15 +28,15 @@
             {:keys [input position] :as state}
             consumed-ok empty-ok consumed-error empty-error]
         (if (< (count input) n)
-          (empty-error (e/unexpected "end of input" position))
+          #(empty-error (e/unexpected "end of input" position))
           (let [s' (reduce str "" (take n input))]
             (if (= s' s)
               (let [new-position (s/update-position s' position)
                     new-state (-> state
                                   (assoc :position new-position)
                                   (assoc :input (drop n input)))]
-                (consumed-ok s' new-state))
-              (empty-error (e/unexpected s' position)))))))))
+                #(consumed-ok s' new-state))
+              #(empty-error (e/unexpected s' position)))))))))
 
 (def any-char
   (c/label (satisfy (constantly true)) "any character"))

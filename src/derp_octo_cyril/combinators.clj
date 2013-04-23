@@ -24,12 +24,12 @@
                             (walk (f acc x))
                             (fn [_ _] (throw many-error))
                             consumed-error
-                            (fn [_] (consumed-ok (f acc x) state')))))]
+                            (fn [_] #(consumed-ok (f acc x) state')))))]
         (p/run p state
                (walk [])
                (fn [_ _] (throw many-error))
                consumed-error
-               (fn [_] (empty-ok [] state)))))))
+               (fn [_] #(empty-ok [] state)))))))
 
 (defn many [p]
   (many-reduce conj p))
@@ -52,9 +52,9 @@
     (run [_ state consumed-ok empty-ok consumed-error empty-error]
       (p/run p state
              (fn [value _]
-               (consumed-ok value state))
+               #(consumed-ok value state))
              (fn [value _]
-               (empty-ok value state))
+               #(empty-ok value state))
              consumed-error
              empty-error))))
 
@@ -66,7 +66,7 @@
              empty-ok
              consumed-error
              (fn [error]
-               (empty-error (e/set-expected error message)))))))
+               #(empty-error (e/set-expected error message)))))))
 
 (defn no-label [p]
   (reify p/Parser
@@ -76,4 +76,4 @@
              empty-ok
              consumed-error
              (fn [error]
-               (empty-error (e/remove-expected error)))))))
+               #(empty-error (e/remove-expected error)))))))
