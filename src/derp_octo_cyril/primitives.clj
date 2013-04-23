@@ -1,16 +1,9 @@
-(ns derp-octo-cyril.sequence-primitives
+(ns derp-octo-cyril.primitives
+  (:refer-clojure :rename {char core-char})
   (:require [derp-octo-cyril.parser :as p])
+  (:require [derp-octo-cyril.combinators :as c])
   (:require [derp-octo-cyril.state :as s])
   (:require [derp-octo-cyril.error :as e]))
-
-(extend-protocol p/ParserInput
-  java.lang.String
-  (parse [input parser]
-    (p/run parser (s/state input)
-           (fn [value _] value)
-           (fn [value _] value)
-           identity
-           identity)))
 
 (defn satisfy [pred]
   (reify p/Parser
@@ -46,33 +39,33 @@
               (empty-error (e/unexpected s' position)))))))))
 
 (def any-char
-  (p/label (satisfy (constantly true)) "any character"))
+  (c/label (satisfy (constantly true)) "any character"))
 
 (defn char [c]
-  (p/label (satisfy (fn [c'] (= c c'))) (str "'" c "'")))
+  (c/label (satisfy (fn [c'] (= c c'))) (str "'" c "'")))
 
 (defn not-char [c]
-  (p/label (satisfy (fn [c'] (not (= c c')))) (str "not '" c "'")))
+  (c/label (satisfy (fn [c'] (not (= c c')))) (str "not '" c "'")))
 
 (def alphanumeric
-  (p/label (satisfy (fn [c] (or (Character/isLetter c)
+  (c/label (satisfy (fn [c] (or (Character/isLetter c)
                              (Character/isDigit c))))
            "alphanumeric"))
 
 (def digit
-  (p/label (satisfy (fn [c] (Character/isDigit c))) "digit"))
+  (c/label (satisfy (fn [c] (Character/isDigit c))) "digit"))
 
 (def letter
-  (p/label (satisfy (fn [c] (Character/isLetter c))) "letter"))
+  (c/label (satisfy (fn [c] (Character/isLetter c))) "letter"))
 
 (def whitespace
-  (p/label (satisfy (fn [c] (Character/isWhitespace c))) "whitespace"))
+  (c/label (satisfy (fn [c] (Character/isWhitespace c))) "whitespace"))
 
 (def space
-  (p/label (satisfy (fn [c] (= c \space))) "space"))
+  (c/label (satisfy (fn [c] (= c \space))) "space"))
 
 (defn one-of [cs]
-  (p/label (satisfy (fn [c] (contains? cs c))) (str "one of " cs)))
+  (c/label (satisfy (fn [c] (contains? cs c))) (str "one of " cs)))
 
 (defn none-of [cs]
-  (p/label (satisfy (fn [c] (not (contains? cs c)))) (str "none of " cs)))
+  (c/label (satisfy (fn [c] (not (contains? cs c)))) (str "none of " cs)))
