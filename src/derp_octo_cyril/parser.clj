@@ -25,25 +25,25 @@
   ([p q]
      (reify Parser
        (run [_ state consumed-ok empty-ok consumed-error empty-error]
-         (let [after-ok
-               (fn [after-empty-ok after-empty-error]
-                 (fn [f state]
-                   (run q state
-                        ;; consumed-ok
-                        (fn [x state']
-                          (consumed-ok (f x) state'))
-                        ;; empty-ok
-                        (fn [x state']
-                          (after-empty-ok (f x) state'))
-                        ;; consumed-error
-                        consumed-error
-                        ;; empty-error
-                        after-empty-error)))]
-           (run p state
-                (after-ok consumed-ok consumed-error)
-                (after-ok empty-ok empty-error)
-                consumed-error
-                empty-error)))))
+         (run p state
+              (fn [f state']
+                (let [cok (fn [x state]
+                            (consumed-ok (f x) state))]
+                  (run q state'
+                       cok
+                       cok
+                       consumed-error
+                       consumed-error)))
+              (fn [f state']
+                (run q state'
+                     (fn [x state'']
+                       (consumed-ok (f x) state''))
+                     (fn [x state'']
+                       (empty-ok (f x) state''))
+                     consumed-error
+                     empty-error))
+              consumed-error
+              empty-error))))
   ([p q & rest]
      (reduce sequence (sequence p q) rest)))
 
@@ -51,25 +51,21 @@
   [p f]
   (reify Parser
     (run [_ state consumed-ok empty-ok consumed-error empty-error]
-      (let [after-ok
-            (fn [after-empty-ok after-empty-error]
-              (fn [x state]
-                (run (f x) state
-                     ;; consumed-ok
-                     (fn [x' state']
-                       (consumed-ok x' state'))
-                     ;; empty-ok
-                     (fn [x' state']
-                       (after-empty-ok x' state'))
-                     ;; consumed-error
-                     consumed-error
-                     ;; empty-error
-                     after-empty-error)))]
-        (run p state
-             (after-ok consumed-ok consumed-error)
-             (after-ok empty-ok empty-error)
-             consumed-error
-             empty-error)))))
+      (run p state
+           (fn [x state']
+             (run (f x) state'
+                  consumed-ok
+                  consumed-ok
+                  consumed-error
+                  consumed-error))
+           (fn [x state']
+             (run (f x) state'
+                  consumed-ok
+                  empty-ok
+                  consumed-error
+                  empty-error))
+           consumed-error
+           empty-error))))
 
 (defn try [p]
   (reify Parser
@@ -108,31 +104,34 @@
               (fn [error]
                 (run q state
                      consumed-ok
-                     (fn [value state']
-                       (empty-ok value state'))
+                     empty-ok
                      consumed-error
                      (fn [error']
                        (empty-error (e/merge error error')))))))))
   ([p q & rest]
      (reduce choose (choose p q) rest)))
 
-(defn many [p]
+(def many-error
+  (RuntimeException. "many applied to an empty parser"))
+
+(defn many-reduce [f p]
   (reify Parser
     (run [_ state consumed-ok empty-ok consumed-error empty-error]
-      (let [empty-many-error (RuntimeException. "many applied to an empty parser")
-            walk (fn walk [acc]
-                   (fn [value state]
-                     (run p state
-                          (walk (conj acc value))
-                          (fn [_ _] (throw empty-many-error))
+      (let [walk (fn walk [acc]
+                   (fn [x state']
+                     (run p state'
+                          (walk (f acc x))
+                          (fn [_ _] (throw many-error))
                           consumed-error
-                          (fn [error]
-                            (consumed-ok (conj acc value) state)))))]
+                          (fn [_] (consumed-ok (f acc x) state')))))]
         (run p state
              (walk [])
-             (fn [_ _] (throw empty-many-error))
+             (fn [_ _] (throw many-error))
              consumed-error
-             (fn [error] (empty-ok [] state)))))))
+             (fn [_] (empty-ok [] state)))))))
+
+(defn many [p]
+  (many-reduce conj p))
 
 (defn some [p]
   (lift cons p (many p)))
