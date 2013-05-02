@@ -1,21 +1,25 @@
 (ns derp-octo-cyril.state)
 
-(defrecord Position [name line column]
-  Comparable
-  (compareTo [_ {line' :line column' :column}]
-    (cond (< line line') -1
-          (= line line') (cond (< column column') -1
-                               (= column column') 0
-                               :else 1)
-          :else 1))
+(defprotocol Position
+  (inc-column [position n])
+  (inc-line [position n]))
+
+(deftype APosition [name line column]
+  Position
+  (inc-column [_ n]
+    (APosition. name line (+ column n)))
+  (inc-line [_ n]
+    (APosition. name (+ line n) 0))
   Object
   (toString [_]
-    (str (if name (str name ": "))
-         "(" line ", " column ")")))
+    (str (if name (str name ", "))
+         "(" line "," column ")")))
 
 (defn position
-  ([line column] (position nil line column))
-  ([name line column] (Position. name line column)))
+  ([line column]
+     (position nil line column))
+  ([name line column]
+     (APosition. name line column)))
 
 (defprotocol Token
   (update-position [token position]))
@@ -28,21 +32,23 @@
   java.lang.Character
   (update-position [c position]
     (if (newline? c)
-      (-> position
-          (update-in [:line] inc)
-          (assoc :column 0))
-      (update-in position [:column] inc)))
+      (inc-line position 1)
+      (inc-column position 1)))
   java.lang.String
   (update-position [s position]
     (let [newlines (filter newline? s)
           last-line (take-while (complement newline?) (reverse s))]
-      (-> position
-          (update-in [:line] + (count newlines))
-          (update-in [:column] + (count last-line))))))
-
-(defrecord State [input position user])
+      (-> (inc-line position (count newlines))
+          (inc-column (count last-line))))))
 
 (defn state
-  ([input] (state input (position 0 0) nil))
-  ([input position] (state input position nil))
-  ([input position user] (State. input position user)))
+  ([input]
+     {:input input
+      :position (position 0 0)})
+  ([input position]
+     {:input input
+      :position position})
+  ([input position user]
+     {:input input
+      :position position
+      :user user}))
