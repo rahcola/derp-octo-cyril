@@ -1,13 +1,10 @@
 (ns derp-octo-cyril.state)
 
 (defprotocol Position
-  (inc-column [position n])
   (inc-line [position n]))
 
-(deftype APosition [name line column]
+(defrecord APosition [name line column]
   Position
-  (inc-column [_ n]
-    (APosition. name line (+ column n)))
   (inc-line [_ n]
     (APosition. name (+ line n) 0))
   Object
@@ -22,7 +19,7 @@
      (APosition. name line column)))
 
 (defprotocol Token
-  (update-position [token position]))
+  (advance-position [token position]))
 
 (defn ^{:private true}
   newline? [c]
@@ -30,25 +27,21 @@
 
 (extend-protocol Token
   java.lang.Character
-  (update-position [c position]
+  (advance-position [c position]
     (if (newline? c)
       (inc-line position 1)
-      (inc-column position 1)))
+      (update-in position [:column] inc)))
   java.lang.String
-  (update-position [s position]
+  (advance-position [s position]
     (let [newlines (filter newline? s)
           last-line (take-while (complement newline?) (reverse s))]
       (-> (inc-line position (count newlines))
-          (inc-column (count last-line))))))
+          (assoc :column (count last-line))))))
+
+(defrecord AState [input position])
 
 (defn state
   ([input]
-     {:input input
-      :position (position 0 0)})
+     (state input (position 0 0)))
   ([input position]
-     {:input input
-      :position position})
-  ([input position user]
-     {:input input
-      :position position
-      :user user}))
+     (AState. input position)))

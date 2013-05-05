@@ -5,67 +5,65 @@
   (:require [derp-octo-cyril.state :as s])
   (:require [derp-octo-cyril.error :as e]))
 
-(defn satisfy [pred]
+(defn update-state [state input position]
+  (-> (assoc state :input input)
+      (assoc :position position)))
+
+(defn satisfy [extract satifies? show]
   (reify p/Parser
     (run [_
           {:keys [input position] :as state}
           consumed-ok empty-ok consumed-error empty-error]
       (if (empty? input)
         #(empty-error (e/unexpected "end of input" position))
-        (let [x (first input)]
-          (if (pred x)
-            (let [new-position (s/update-position x position)
-                  new-state (-> state
-                                (assoc :position new-position)
-                                (assoc :input (rest input)))]
-              #(consumed-ok x new-state))
-            #(empty-error (e/unexpected (str "'" x "'") position))))))))
+        (let [[x rest] (extract input)]
+          (if (satifies? x)
+            #(consumed-ok x (update-state state
+                                          rest
+                                          (s/advance-position x position)))
+            #(empty-error (e/unexpected (show x) position))))))))
+
+(defn char-satisfy [satifies?]
+  (satisfy (juxt first rest)
+           satifies?
+           (fn [c] (str "'" c "'"))))
 
 (defn string [s]
   (let [n (count s)]
-    (reify p/Parser
-      (run [_
-            {:keys [input position] :as state}
-            consumed-ok empty-ok consumed-error empty-error]
-        (if (< (count input) n)
-          #(empty-error (e/unexpected "end of input" position))
-          (let [s' (reduce str "" (take n input))]
-            (if (= s' s)
-              (let [new-position (s/update-position s' position)
-                    new-state (-> state
-                                  (assoc :position new-position)
-                                  (assoc :input (drop n input)))]
-                #(consumed-ok s' new-state))
-              #(empty-error (e/unexpected s' position)))))))))
+    (satisfy (juxt (comp (partial reduce str "")
+                         (partial take n))
+                   (partial drop n))
+             (partial = s)
+             identity)))
 
 (def any-char
-  (c/label (satisfy (constantly true)) "any character"))
+  (c/label (char-satisfy (constantly true)) "any character"))
 
 (defn char [c]
-  (c/label (satisfy (fn [c'] (= c c'))) (str "'" c "'")))
+  (c/label (char-satisfy (fn [c'] (= c c'))) (str "'" c "'")))
 
 (defn not-char [c]
-  (c/label (satisfy (fn [c'] (not (= c c')))) (str "not '" c "'")))
+  (c/label (char-satisfy (fn [c'] (not (= c c')))) (str "not '" c "'")))
 
 (def alphanumeric
-  (c/label (satisfy (fn [c] (or (Character/isLetter c)
+  (c/label (char-satisfy (fn [c] (or (Character/isLetter c)
                              (Character/isDigit c))))
            "alphanumeric"))
 
 (def digit
-  (c/label (satisfy (fn [c] (Character/isDigit c))) "digit"))
+  (c/label (char-satisfy (fn [c] (Character/isDigit c))) "digit"))
 
 (def letter
-  (c/label (satisfy (fn [c] (Character/isLetter c))) "letter"))
+  (c/label (char-satisfy (fn [c] (Character/isLetter c))) "letter"))
 
 (def whitespace
-  (c/label (satisfy (fn [c] (Character/isWhitespace c))) "whitespace"))
+  (c/label (char-satisfy (fn [c] (Character/isWhitespace c))) "whitespace"))
 
 (def space
-  (c/label (satisfy (fn [c] (= c \space))) "space"))
+  (c/label (char-satisfy (fn [c] (= c \space))) "space"))
 
 (defn one-of [cs]
-  (c/label (satisfy (fn [c] (contains? cs c))) (str "one of " cs)))
+  (c/label (char-satisfy (fn [c] (contains? cs c))) (str "one of " cs)))
 
 (defn none-of [cs]
-  (c/label (satisfy (fn [c] (not (contains? cs c)))) (str "none of " cs)))
+  (c/label (char-satisfy (fn [c] (not (contains? cs c)))) (str "none of " cs)))
